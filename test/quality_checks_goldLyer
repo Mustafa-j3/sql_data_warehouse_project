@@ -1,0 +1,57 @@
+--==================================================
+--      gold.dim_customer
+--==================================================
+Select ROW_NUMBER() 
+	   OVER(order by cst_id) as customer_key,	
+ci.cst_id AS customer_id,
+ci.cst_key AS customer_number,
+ci.cst_firstname AS first_name,
+ci.cst_lastname AS last_name,
+la.cntry AS country,
+ci.cst_material_status AS material_status,
+CASE
+	WHEN ci.cst_gndr !='n/a' Then ci.cst_gndr  --CRM is the Master of gender info
+	ELSE COALESCE(ca.gen,'n/a')						--if n/a is Master table so it will get from other table
+end as gender,
+ca.bdate AS birth_date,
+ci.cst_create_date AS create_date
+from silver.crm_cust_info ci
+--========================================================================
+--    gold.dim_products
+--=========================================================================
+
+select prd_key, count(*) from (  --DUPLICATE CHECK
+select 
+	ROW_NUMBER() OVER (ORDER BY pn.prd_start_dt, pn.prd_key) AS product_key,		--PrimaryKey(surrogateKey Only used to connect data model
+	pn.prd_id AS product_id,
+	pn.prd_key AS product_number,
+	pn.prd_nm AS product_name,
+	pn.cat_id AS catagory_id,
+	pc.cat AS catagory,
+	pc.subcat AS sub_catagory,
+	pc.maintenance,
+	pn.prd_cost AS cost,
+	pn.prd_line AS product_line,
+	pn.prd_start_dt AS start_line
+--pn.prd_end_dt --we do not include coz is always NULL
+from silver.crm_prd_info pn
+lEFT JOIN silver.erp_px_cat_g1v2 AS pc
+ON pn.cat_id = pc.id
+WHERE prd_end_dt IS NULL	--from end date Null value is NEW record 
+)t Group by prd_key		--check duplicates
+HAVING COUNT(*) > 1
+
+
+
+--=======================================================
+--  gold.fact_sales
+--=======================================================
+
+
+select * from gold.fact_sales f
+left JOIN gold.dim_customer c
+ON c.customer_key = f.customer_key
+--where c.customer_key is null			--for dim customer check
+LEFT JOIN gold.dim_products p
+on p.product_key = f.product_key
+where p.product_key IS NULL
